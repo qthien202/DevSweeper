@@ -39,6 +39,20 @@ struct StorageItem: Identifiable {
     let note: String
     let cleaner: Cleaner?
     var size: Int64? = nil
+    var detail: DetailKind? = .children(deletable: true)
+}
+
+/// Cách hiển thị danh sách chi tiết của một mục.
+enum DetailKind {
+    case children(deletable: Bool)
+    case derivedData
+    case simulators
+    case archives
+
+    var deletable: Bool {
+        if case .children(let d) = self { return d }
+        return true
+    }
 }
 
 enum StorageCatalog {
@@ -47,15 +61,15 @@ enum StorageCatalog {
         let dev = lib + "/Developer"
         return [
             .init(name: "Xcode DerivedData", path: dev + "/Xcode/DerivedData", icon: "hammer",
-                  note: "Build cache của Xcode, sẽ tự build lại", cleaner: .deleteContents),
+                  note: "Build cache của Xcode, sẽ tự build lại", cleaner: .deleteContents, detail: .derivedData),
             .init(name: "Simulators", path: dev + "/CoreSimulator/Devices", icon: "iphone",
-                  note: "Dọn = xóa các simulator không còn runtime", cleaner: .command(["xcrun", "simctl", "delete", "unavailable"])),
+                  note: "Dọn = xóa các simulator không còn runtime", cleaner: .command(["xcrun", "simctl", "delete", "unavailable"]), detail: .simulators),
             .init(name: "Simulator caches", path: dev + "/CoreSimulator/Caches", icon: "iphone.gen3.badge.exclamationmark",
                   note: "Cache dyld của simulator", cleaner: .deleteContents),
             .init(name: "iOS DeviceSupport", path: dev + "/Xcode/iOS DeviceSupport", icon: "cable.connector",
                   note: "Symbol của các máy thật đã từng cắm, tải lại khi cần", cleaner: .deleteContents),
             .init(name: "Xcode Archives", path: dev + "/Xcode/Archives", icon: "archivebox",
-                  note: "Bản archive + dSYM. Cân nhắc trước khi xóa", cleaner: .deleteContents),
+                  note: "Bản archive + dSYM. Cân nhắc trước khi xóa", cleaner: .deleteContents, detail: .archives),
             .init(name: "SwiftPM cache", path: lib + "/Caches/org.swift.swiftpm", icon: "shippingbox",
                   note: "Package Swift đã tải", cleaner: .deleteContents),
             .init(name: "CocoaPods cache", path: lib + "/Caches/CocoaPods", icon: "shippingbox.fill",
@@ -67,17 +81,17 @@ enum StorageCatalog {
             .init(name: "Yarn cache", path: lib + "/Caches/Yarn", icon: "cube.box.fill",
                   note: "Package yarn đã tải", cleaner: .deleteContents),
             .init(name: "pnpm store", path: lib + "/pnpm/store", icon: "cube",
-                  note: "Dọn = pnpm store prune", cleaner: .command(["pnpm", "store", "prune"])),
+                  note: "Dọn = pnpm store prune", cleaner: .command(["pnpm", "store", "prune"]), detail: .children(deletable: false)),
             .init(name: "Homebrew cache", path: lib + "/Caches/Homebrew", icon: "mug",
                   note: "Dọn = brew cleanup --prune=all", cleaner: .command(["brew", "cleanup", "--prune=all"])),
             .init(name: "Android SDK", path: lib + "/Android/sdk", icon: "apps.iphone",
-                  note: "Chỉ thống kê", cleaner: nil),
+                  note: "Chỉ thống kê", cleaner: nil, detail: .children(deletable: false)),
             .init(name: "Android emulators", path: home + "/.android/avd", icon: "apps.iphone.badge.plus",
-                  note: "Chỉ thống kê — xóa trong Android Studio", cleaner: nil),
+                  note: "Chỉ thống kê — xóa trong Android Studio", cleaner: nil, detail: .children(deletable: false)),
             .init(name: "Docker", path: lib + "/Containers/com.docker.docker", icon: "shippingbox.circle",
-                  note: "Chỉ thống kê — dọn bằng docker system prune", cleaner: nil),
+                  note: "Chỉ thống kê — dọn bằng docker system prune", cleaner: nil, detail: .children(deletable: false)),
             .init(name: "Library/Caches (tất cả)", path: lib + "/Caches", icon: "tray.full",
-                  note: "Chỉ thống kê — gồm cả các mục ở trên", cleaner: nil),
+                  note: "Gồm cả các mục ở trên — xem chi tiết để xóa cache từng app", cleaner: nil),
         ]
     }
 }

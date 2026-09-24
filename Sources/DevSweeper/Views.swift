@@ -221,6 +221,7 @@ extension MergeState {
 
 struct StorageView: View {
     @EnvironmentObject var model: AppModel
+    @State private var detailItem: StorageItem?
 
     var body: some View {
         let items = model.storage.sorted { ($0.size ?? -1) > ($1.size ?? -1) }
@@ -244,25 +245,30 @@ struct StorageView: View {
                             .tint(item.cleaner == nil ? .gray : .accentColor)
                         Text(item.note).font(.caption).foregroundStyle(.secondary)
                     }
-                    Group {
+                    HStack(spacing: 6) {
                         if model.busy.contains(item.path) {
                             ProgressView().controlSize(.small)
-                        } else if item.cleaner != nil {
-                            Button("Dọn") { model.askClean(item) }
-                                .disabled((item.size ?? 0) == 0)
                         } else {
-                            Button { model.reveal(item.path) } label: { Image(systemName: "magnifyingglass") }
-                                .disabled(item.size == nil)
-                                .help("Hiện trong Finder")
+                            if item.detail != nil {
+                                Button("Chi tiết") { detailItem = item }
+                                    .disabled((item.size ?? 0) == 0)
+                            }
+                            if item.cleaner != nil {
+                                Button("Dọn") { model.askClean(item) }
+                                    .disabled((item.size ?? 0) == 0)
+                            }
                         }
                     }
-                    .frame(width: 60)
+                    .frame(width: 130, alignment: .trailing)
                 }
                 .padding(.vertical, 4)
                 .contextMenu {
                     Button("Hiện trong Finder") { model.reveal(item.path) }
                 }
             }
+        }
+        .sheet(item: $detailItem) { item in
+            DetailSheet(item: item).environmentObject(model)
         }
         .navigationTitle("Dung lượng")
         .toolbar {

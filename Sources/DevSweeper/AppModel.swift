@@ -70,6 +70,12 @@ final class AppModel: ObservableObject {
         storageScanning = false
     }
 
+    func refreshStorageSize(_ path: String) async {
+        let size = await DiskUsage.size(of: path)
+        if let i = storage.firstIndex(where: { $0.path == path }) { storage[i].size = size }
+        refreshDisk()
+    }
+
     func askClean(_ item: StorageItem) {
         guard let cleaner = item.cleaner else { return }
         let how: String
