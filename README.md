@@ -12,6 +12,11 @@ App macOS (SwiftUI, menu bar + cửa sổ) dọn dẹp dung lượng cho dev iOS
 - **Dung lượng**: thống kê DerivedData, Simulators, DeviceSupport, Archives, SwiftPM, CocoaPods, Gradle, npm, Yarn, pnpm, Homebrew, Docker…
 - **Rác build**: trace Instruments (`.ktrace`/`.trace`), DerivedData tạm (`-derivedDataPath` trong `/tmp`, `$TMPDIR`), scratchpad của các phiên Claude Code (ghép với PR qua transcript), cache cài app của Xcode
 - **Tự dọn mỗi giờ**: chỉ xóa rác cũ hơn ngưỡng (mặc định 24 giờ), không có tiến trình nào dùng, không ghi trong 30 phút; scratchpad chỉ khi PR đã merge/đóng. Ổ dưới ngưỡng (mặc định 30 GB) → thông báo + dọn thêm cache cài app của Xcode
+- **Simulator runtime**: dung lượng từng runtime, simulator nào dùng, lần dùng cuối; gỡ bằng `simctl runtime delete`
+- **Simulator**: xóa dữ liệu (erase) mà không xóa simulator; **DeviceSupport** đánh dấu máy không cắm hơn 60 ngày
+- **Git repo**: dung lượng `.git`, object rời, số pack; chạy `git gc` khi thật sự lấy lại được
+- **File lớn**: file ≥ 100 MB–1 GB trong Home, lọc theo lần mở cuối (Spotlight), chuyển vào Thùng rác
+- **Gỡ app**: gỡ app kèm dữ liệu trong `~/Library` (Application Support, Caches, Containers, Preferences…), chuyển vào Thùng rác
 - **Thư mục lớn**: quét Home 2 cấp, liệt kê thư mục ≥ 50 MB
 
 ## Build

@@ -19,6 +19,11 @@ enum DetailLoader {
         case .derivedData: derivedData(item.path)
         case .simulators: await simulators(item.path)
         case .archives: archives(item.path)
+        case .deviceSupport: children(item.path).map { e in
+            var e = e
+            if let d = e.date, Date().timeIntervalSince(d) > 60 * 86400 { e.warning = "Không cắm máy này hơn 60 ngày" }
+            return e
+        }
         case .children, nil: children(item.path)
         }
     }
@@ -147,6 +152,7 @@ struct DetailSheet: View {
     @State private var selection = Set<String>()
     @State private var sort: DetailSort = .size
     @State private var confirming: [DetailEntry]?
+    @State private var erasing: DetailEntry?
     @State private var deleting = Set<String>()
     @State private var errors: [String] = []
 
@@ -183,6 +189,16 @@ struct DetailSheet: View {
             Button("Huỷ", role: .cancel) {}
         } message: { list in
             Text(confirmMessage(list))
+        }
+        .alert("Xóa dữ liệu \(erasing?.name ?? "")?", isPresented: Binding(
+            get: { erasing != nil },
+            set: { if !$0 { erasing = nil } }
+        ), presenting: erasing) { e in
+            Button("Erase", role: .destructive) { Task { await erase(e) } }
+            Button("Huỷ", role: .cancel) {}
+        } message: { e in
+            Text("Đưa simulator về như mới: xóa app, dữ liệu, ảnh, cài đặt (\((e.size ?? 0).bytes)). Simulator vẫn còn trong danh sách."
+                 + (e.simBooted ? "\n\nSimulator đang chạy sẽ bị tắt." : ""))
         }
     }
 
@@ -282,6 +298,9 @@ struct DetailSheet: View {
                 } else {
                     Menu {
                         Button("Hiện trong Finder") { model.reveal(e.path) }
+                        if e.simUDID != nil {
+                            Button("Xóa dữ liệu (erase)…") { erasing = e }
+                        }
                         if deletable {
                             Divider()
                             Button("Xóa…", role: .destructive) { confirming = [e] }
@@ -361,6 +380,19 @@ struct DetailSheet: View {
             }
         }
         loading = false
+    }
+
+    private func erase(_ e: DetailEntry) async {
+        guard let udid = e.simUDID else { return }
+        deleting.insert(e.path)
+        if let err = await RuntimeManager.erase(udid: udid, booted: e.simBooted) {
+            errors = ["\(e.name): \(err)"]
+        } else if let i = entries.firstIndex(where: { $0.path == e.path }) {
+            entries[i].size = await DiskUsage.size(of: e.path)
+            entries[i].simBooted = false
+        }
+        deleting.remove(e.path)
+        await model.refreshStorageSize(item.path)
     }
 
     private func delete(_ list: [DetailEntry]) async {

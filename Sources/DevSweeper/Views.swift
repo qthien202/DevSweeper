@@ -94,6 +94,10 @@ enum Section: String, CaseIterable, Identifiable {
     case overview = "Dung lượng"
     case leftovers = "Rác build"
     case worktrees = "Worktrees"
+    case runtimes = "Simulator runtime"
+    case gitRepos = "Git repo"
+    case largeFiles = "File lớn"
+    case uninstall = "Gỡ app"
     case bigFolders = "Thư mục lớn"
     case settings = "Cài đặt"
     var id: String { rawValue }
@@ -101,6 +105,10 @@ enum Section: String, CaseIterable, Identifiable {
         switch self {
         case .overview: "chart.bar.xaxis"
         case .leftovers: "sparkles"
+        case .runtimes: "iphone.gen3"
+        case .gitRepos: "point.3.connected.trianglepath.dotted"
+        case .largeFiles: "doc.text.magnifyingglass"
+        case .uninstall: "xmark.app"
         case .worktrees: "arrow.triangle.branch"
         case .bigFolders: "folder.badge.questionmark"
         case .settings: "gearshape"
@@ -114,8 +122,17 @@ struct MainView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(Section.allCases, selection: $section) { s in
-                Label(s.rawValue, systemImage: s.icon).tag(s)
+            List(selection: $section) {
+                SwiftUI.Section("Dev") {
+                    ForEach([Section.overview, .leftovers, .worktrees, .runtimes, .gitRepos]) { s in
+                        Label(s.rawValue, systemImage: s.icon).tag(s)
+                    }
+                }
+                SwiftUI.Section("Hệ thống") {
+                    ForEach([Section.largeFiles, .uninstall, .bigFolders, .settings]) { s in
+                        Label(s.rawValue, systemImage: s.icon).tag(s)
+                    }
+                }
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190)
             .safeAreaInset(edge: .bottom) {
@@ -126,6 +143,10 @@ struct MainView: View {
                 switch section ?? .worktrees {
                 case .overview: StorageView()
                 case .leftovers: LeftoversView()
+                case .runtimes: RuntimesView()
+                case .gitRepos: GitReposView()
+                case .largeFiles: LargeFilesView()
+                case .uninstall: UninstallView()
                 case .worktrees: WorktreesView()
                 case .bigFolders: BigFoldersView()
                 case .settings: SettingsView()

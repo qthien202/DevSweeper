@@ -40,6 +40,16 @@ final class AppModel: ObservableObject {
     }
     private var lastLowDiskAlert: Date?
 
+    @Published var runtimes: [SimRuntime] = []
+    @Published var runtimesLoading = false
+    @Published var gitRepos: [GitRepoInfo] = []
+    @Published var gitLoading = false
+    @Published var largeFiles: [LargeFile] = []
+    @Published var largeLoading = false
+    @Published var largeScanned = false
+    @Published var apps: [InstalledApp] = []
+    @Published var appsLoading = false
+
     @Published var bigFolders: [FolderNode] = []
     @Published var bigScanning = false
 

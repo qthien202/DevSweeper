@@ -45,6 +45,7 @@ struct StorageItem: Identifiable {
 /// Cách hiển thị danh sách chi tiết của một mục.
 enum DetailKind {
     case children(deletable: Bool)
+    case deviceSupport
     case derivedData
     case simulators
     case archives
@@ -67,7 +68,7 @@ enum StorageCatalog {
             .init(name: "Simulator caches", path: dev + "/CoreSimulator/Caches", icon: "iphone.gen3.badge.exclamationmark",
                   note: "Cache dyld của simulator", cleaner: .deleteContents),
             .init(name: "iOS DeviceSupport", path: dev + "/Xcode/iOS DeviceSupport", icon: "cable.connector",
-                  note: "Symbol của các máy thật đã từng cắm, tải lại khi cần", cleaner: .deleteContents),
+                  note: "Symbol của các máy thật đã từng cắm, tải lại khi cần", cleaner: .deleteContents, detail: .deviceSupport),
             .init(name: "Xcode Archives", path: dev + "/Xcode/Archives", icon: "archivebox",
                   note: "Bản archive + dSYM. Cân nhắc trước khi xóa", cleaner: .deleteContents, detail: .archives),
             .init(name: "SwiftPM cache", path: lib + "/Caches/org.swift.swiftpm", icon: "shippingbox",
