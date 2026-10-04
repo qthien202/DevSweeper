@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UserNotifications
 
 struct PendingAction: Identifiable {
     let id = UUID()
@@ -20,6 +21,24 @@ final class AppModel: ObservableObject {
     @Published var worktreeScanning = false
     @Published var worktreeProgress = ""
     @Published var worktreesScannedAt: Date?
+
+    @Published var leftovers: [Leftover] = []
+    @Published var leftoverScanning = false
+    @Published var lastAutoClean: Date? = UserDefaults.standard.object(forKey: "lastAutoClean") as? Date
+    @Published var lastAutoCleanFreed: Int64 = Int64(UserDefaults.standard.integer(forKey: "lastAutoCleanFreed"))
+
+    @Published var autoClean: Bool {
+        didSet { UserDefaults.standard.set(autoClean, forKey: "autoClean") }
+    }
+    /// Chỉ tự dọn rác cũ hơn số giờ này.
+    @Published var autoCleanMinAgeHours: Int {
+        didSet { UserDefaults.standard.set(autoCleanMinAgeHours, forKey: "autoCleanMinAgeHours") }
+    }
+    /// Dưới ngưỡng này (GB) thì cảnh báo + tự dọn cả cache cài app của Xcode.
+    @Published var lowDiskGB: Int {
+        didSet { UserDefaults.standard.set(lowDiskGB, forKey: "lowDiskGB") }
+    }
+    private var lastLowDiskAlert: Date?
 
     @Published var bigFolders: [FolderNode] = []
     @Published var bigScanning = false
@@ -43,12 +62,24 @@ final class AppModel: ObservableObject {
         roots = d.stringArray(forKey: "roots") ?? [home + "/Documents/dev"]
         fetchBeforeScan = d.object(forKey: "fetchBeforeScan") as? Bool ?? true
         deleteBranchOnRemove = d.object(forKey: "deleteBranchOnRemove") as? Bool ?? false
+        autoClean = d.object(forKey: "autoClean") as? Bool ?? true
+        autoCleanMinAgeHours = d.object(forKey: "autoCleanMinAgeHours") as? Int ?? 24
+        lowDiskGB = d.object(forKey: "lowDiskGB") as? Int ?? 30
 
         Task {
             await scanStorage()
+            await scanLeftovers()
             await scanWorktrees()
+            await autoCleanIfNeeded()
+            // Kiểm tra lại mỗi giờ
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3600))
+                await autoCleanIfNeeded()
+            }
         }
     }
+
+    var isLowDisk: Bool { disk.free < Int64(lowDiskGB) * 1_000_000_000 }
 
     // MARK: - Derived
 
@@ -215,6 +246,96 @@ final class AppModel: ObservableObject {
             if let w = repos[r].worktrees.firstIndex(where: { $0.path == wt.path }) {
                 change(&repos[r].worktrees[w])
             }
+        }
+    }
+
+    // MARK: - Leftovers
+
+    var autoCleanMinAge: TimeInterval { TimeInterval(autoCleanMinAgeHours) * 3600 }
+    var safeLeftovers: [Leftover] {
+        leftovers.filter { $0.isSafe(minAge: autoCleanMinAge) && ($0.kind != .xcodeDelta || isLowDisk) }
+    }
+    var leftoverTotal: Int64 { leftovers.reduce(0) { $0 + $1.size } }
+
+    func scanLeftovers() async {
+        guard !leftoverScanning else { return }
+        leftoverScanning = true
+        leftovers = await LeftoverScanner.scan()
+        leftoverScanning = false
+        refreshDisk()
+    }
+
+    func askDeleteLeftovers(_ items: [Leftover]) {
+        guard !items.isEmpty else { return }
+        let total = items.reduce(Int64(0)) { $0 + $1.size }
+        var msg = "Giải phóng \(total.bytes). Xóa vĩnh viễn, không qua Thùng rác."
+        if items.contains(where: \.inUse) {
+            msg += "\n\n⚠️ Có mục ĐANG ĐƯỢC DÙNG (build/phiên đang chạy hoặc vừa ghi trong 30 phút) — xóa có thể làm hỏng việc đang chạy."
+        }
+        if items.contains(where: { $0.kind == .scratchpad && !$0.prDone }) {
+            msg += "\n\n⚠️ Có scratchpad của PR CHƯA merge."
+        }
+        if items.count <= 12 {
+            msg += "\n\n" + items.map { "• \($0.name) — \($0.size.bytes)" }.joined(separator: "\n")
+        }
+        pending = PendingAction(
+            title: items.count == 1 ? "Xóa \(items[0].name)?" : "Xóa \(items.count) mục rác build?",
+            message: msg, confirm: "Xóa"
+        ) { [weak self] in _ = await self?.deleteLeftovers(items) }
+    }
+
+    @discardableResult
+    func deleteLeftovers(_ items: [Leftover]) async -> Int64 {
+        var freed: Int64 = 0
+        var failed: [String] = []
+        for item in items {
+            busy.insert(item.path)
+            if let err = await LeftoverScanner.delete(item) {
+                failed.append("\(item.name): \(err)")
+            } else {
+                freed += item.size
+                leftovers.removeAll { $0.path == item.path }
+            }
+            busy.remove(item.path)
+        }
+        if !failed.isEmpty { errorMessage = "Không xóa được:\n" + failed.joined(separator: "\n") }
+        refreshDisk()
+        return freed
+    }
+
+    /// Tự dọn rác an toàn (cũ hơn ngưỡng, không đang dùng, PR đã xong).
+    /// Ổ sắp đầy → dọn thêm cache cài app của Xcode và gửi thông báo.
+    func autoCleanIfNeeded() async {
+        refreshDisk()
+        if autoClean {
+            await scanLeftovers()
+            let targets = safeLeftovers
+            if !targets.isEmpty {
+                let freed = await deleteLeftovers(targets)
+                lastAutoClean = Date()
+                lastAutoCleanFreed = freed
+                UserDefaults.standard.set(lastAutoClean, forKey: "lastAutoClean")
+                UserDefaults.standard.set(Int(freed), forKey: "lastAutoCleanFreed")
+                if freed > 500_000_000 {
+                    notify("Đã tự dọn \(freed.bytes) rác build", body: "\(targets.count) mục · còn trống \(disk.free.bytes)")
+                }
+            }
+        }
+        if isLowDisk, Date().timeIntervalSince(lastLowDiskAlert ?? .distantPast) > 6 * 3600 {
+            lastLowDiskAlert = Date()
+            notify("Ổ đĩa sắp đầy — còn \(disk.free.bytes)",
+                   body: "Mở DevSweeper để xem DerivedData, worktree và rác build có thể dọn.")
+        }
+    }
+
+    private func notify(_ title: String, body: String) {
+        Task {
+            let center = UNUserNotificationCenter.current()
+            guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            try? await center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
         }
     }
 

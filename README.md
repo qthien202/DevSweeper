@@ -10,6 +10,8 @@ App macOS (SwiftUI, menu bar + cửa sổ) dọn dẹp dung lượng cho dev iOS
 - Tính **cache build** của từng worktree: `node_modules`, `.build`, `Pods`, `build`, `.gradle`… (chỉ những thư mục bị `.gitignore`) + **DerivedData** của Xcode (map qua `WorkspacePath` trong `info.plist`)
 - Xóa cache hoặc xóa hẳn worktree đã merge (từng cái hoặc hàng loạt; worktree có thay đổi chưa commit bị loại khỏi thao tác hàng loạt)
 - **Dung lượng**: thống kê DerivedData, Simulators, DeviceSupport, Archives, SwiftPM, CocoaPods, Gradle, npm, Yarn, pnpm, Homebrew, Docker…
+- **Rác build**: trace Instruments (`.ktrace`/`.trace`), DerivedData tạm (`-derivedDataPath` trong `/tmp`, `$TMPDIR`), scratchpad của các phiên Claude Code (ghép với PR qua transcript), cache cài app của Xcode
+- **Tự dọn mỗi giờ**: chỉ xóa rác cũ hơn ngưỡng (mặc định 24 giờ), không có tiến trình nào dùng, không ghi trong 30 phút; scratchpad chỉ khi PR đã merge/đóng. Ổ dưới ngưỡng (mặc định 30 GB) → thông báo + dọn thêm cache cài app của Xcode
 - **Thư mục lớn**: quét Home 2 cấp, liệt kê thư mục ≥ 50 MB
 
 ## Build

@@ -16,7 +16,7 @@ struct DevSweeperApp: App {
         MenuBarExtra {
             MenuBarView().environmentObject(model)
         } label: {
-            Image(systemName: "externaldrive.badge.minus")
+            Image(systemName: model.isLowDisk ? "externaldrive.badge.exclamationmark" : "externaldrive.badge.minus")
         }
         .menuBarExtraStyle(.window)
     }
@@ -31,6 +31,11 @@ struct MenuBarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             DiskBar(disk: model.disk)
+
+            if model.isLowDisk {
+                Label("Sắp hết dung lượng", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red).font(.callout.weight(.semibold))
+            }
 
             if model.worktreeScanning {
                 HStack(spacing: 6) {
@@ -48,6 +53,14 @@ struct MenuBarView: View {
 
             Divider()
 
+            if !model.safeLeftovers.isEmpty {
+                Button {
+                    Task { await model.deleteLeftovers(model.safeLeftovers) }
+                } label: {
+                    Label("Dọn rác build an toàn (\(model.safeLeftovers.reduce(Int64(0)) { $0 + $1.size }.bytes))",
+                          systemImage: "sparkles")
+                }
+            }
             Button {
                 openWindow(id: "main")
                 NSApp.activate(ignoringOtherApps: true)
@@ -57,6 +70,7 @@ struct MenuBarView: View {
             Button {
                 Task {
                     await model.scanStorage()
+                    await model.scanLeftovers()
                     await model.scanWorktrees()
                 }
             } label: {
@@ -78,6 +92,7 @@ struct MenuBarView: View {
 
 enum Section: String, CaseIterable, Identifiable {
     case overview = "Dung lượng"
+    case leftovers = "Rác build"
     case worktrees = "Worktrees"
     case bigFolders = "Thư mục lớn"
     case settings = "Cài đặt"
@@ -85,6 +100,7 @@ enum Section: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .overview: "chart.bar.xaxis"
+        case .leftovers: "sparkles"
         case .worktrees: "arrow.triangle.branch"
         case .bigFolders: "folder.badge.questionmark"
         case .settings: "gearshape"
@@ -109,6 +125,7 @@ struct MainView: View {
             Group {
                 switch section ?? .worktrees {
                 case .overview: StorageView()
+                case .leftovers: LeftoversView()
                 case .worktrees: WorktreesView()
                 case .bigFolders: BigFoldersView()
                 case .settings: SettingsView()
@@ -562,6 +579,15 @@ struct SettingsView: View {
             SwiftUI.Section("Kiểm tra merge") {
                 Toggle("git fetch --prune trước khi quét", isOn: $model.fetchBeforeScan)
                 Text("Cập nhật trạng thái nhánh trên remote. Trạng thái PR lấy qua GitHub CLI (`gh`) — cần `gh auth login`.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            SwiftUI.Section("Tự dọn rác build") {
+                Toggle("Tự dọn mỗi giờ", isOn: $model.autoClean)
+                Picker("Chỉ dọn rác cũ hơn", selection: $model.autoCleanMinAgeHours) {
+                    ForEach([6, 12, 24, 48, 72], id: \.self) { Text("\($0) giờ").tag($0) }
+                }
+                Stepper("Cảnh báo khi còn trống dưới \(model.lowDiskGB) GB", value: $model.lowDiskGB, in: 10...200, step: 10)
+                Text("Tự dọn: trace Instruments, DerivedData tạm trong /tmp và $TMPDIR, scratchpad của phiên Claude có PR đã merge/đóng — chỉ khi không có tiến trình nào dùng và không ghi trong 30 phút. Khi ổ dưới ngưỡng cảnh báo thì dọn thêm cache cài app của Xcode.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             SwiftUI.Section("Khi xóa worktree") {
