@@ -4,6 +4,7 @@ import Foundation
 enum LeftoverKind: String, CaseIterable, Identifiable {
     case trace = "Trace Instruments"
     case tempDerivedData = "DerivedData tạm"
+    case mergedDerivedData = "DerivedData của PR đã merge"
     case scratchpad = "Scratchpad của phiên Claude"
     case xcodeDelta = "Cache cài app của Xcode"
 
@@ -12,6 +13,7 @@ enum LeftoverKind: String, CaseIterable, Identifiable {
         switch self {
         case .trace: "waveform.path.ecg"
         case .tempDerivedData: "hammer"
+        case .mergedDerivedData: "arrow.triangle.merge"
         case .scratchpad: "brain"
         case .xcodeDelta: "iphone.and.arrow.forward"
         }
@@ -20,6 +22,7 @@ enum LeftoverKind: String, CaseIterable, Identifiable {
         switch self {
         case .trace: ".ktrace / .trace trong /tmp và $TMPDIR — xctrace để lại khi ghi xong hoặc bị ngắt"
         case .tempDerivedData: "Thư mục -derivedDataPath riêng của từng lần build trong /tmp và $TMPDIR"
+        case .mergedDerivedData: "~/Library/Developer/Xcode/DerivedData của worktree có PR đã merge/đóng, hoặc project đã bị xóa"
         case .scratchpad: "Thư mục tạm của từng phiên Claude Code — ghép với PR mà phiên đó làm"
         case .xcodeDelta: "Bản app cũ Xcode giữ để cài lên máy thật nhanh hơn — tự tạo lại"
         }
@@ -42,13 +45,15 @@ struct Leftover: Identifiable {
 
     var age: TimeInterval { modified.map { Date().timeIntervalSince($0) } ?? .infinity }
 
-    /// Có được tự dọn không, với ngưỡng tuổi cho trước.
+    /// Có được tự dọn không. Cache build (DerivedData, delta) chỉ cần không ghi trong 30 phút;
+    /// trace và scratchpad còn phải cũ hơn ngưỡng tuổi.
     func isSafe(minAge: TimeInterval) -> Bool {
-        guard !inUse, age >= minAge else { return false }
+        guard !inUse else { return false }
         switch kind {
-        case .trace, .tempDerivedData: return true
-        case .scratchpad: return prDone
-        case .xcodeDelta: return true
+        case .tempDerivedData, .xcodeDelta: return true
+        case .mergedDerivedData: return prDone
+        case .trace: return age >= minAge
+        case .scratchpad: return prDone && age >= minAge
         }
     }
 }
@@ -73,6 +78,7 @@ enum LeftoverScanner {
         items += tempDerivedData()
         items += await scratchpads()
         items += xcodeDeltas()
+        items += await mergedDerivedData()
 
         return await Parallel.map(items, limit: 6) { item in
             var item = item
@@ -111,6 +117,54 @@ enum LeftoverScanner {
                 if let ws = workspacePath(path) { item.subtitle = shortDir(dir) + "  → " + short(ws) }
                 result.append(item)
             }
+        }
+        return result
+    }
+
+    /// DerivedData trong ~/Library ghép với worktree qua info.plist:WorkspacePath,
+    /// rồi tra trạng thái PR của nhánh worktree đó. Project đã mất cũng tính là xong.
+    private static func mergedDerivedData() async -> [Leftover] {
+        let root = home + "/Library/Developer/Xcode/DerivedData"
+        var prsByRepo: [String: [String: String]] = [:] // git common dir → (branch → state)
+        var result: [Leftover] = []
+
+        for path in children(of: root) {
+            guard let ws = workspacePath(path) else { continue } // ModuleCache.noindex… dùng chung, bỏ qua
+            let worktree = (ws as NSString).deletingLastPathComponent
+            var item = Leftover(path: path, kind: .mergedDerivedData, name: name(worktree),
+                                subtitle: short(ws), modified: newestModification(path))
+
+            guard FileManager.default.fileExists(atPath: ws) else {
+                item.prLabel = "Project đã bị xóa"
+                item.prDone = true
+                result.append(item)
+                continue
+            }
+            let branch = await Shell.run(["git", "-C", worktree, "branch", "--show-current"]).trimmed
+            let common = await Shell.run(["git", "-C", worktree, "rev-parse", "--path-format=absolute", "--git-common-dir"]).trimmed
+            guard !branch.isEmpty, !common.isEmpty else { continue }
+
+            if prsByRepo[common] == nil {
+                let r = await Shell.run(["gh", "pr", "list", "--state", "all", "--limit", "500",
+                                         "--json", "headRefName,state,number",
+                                         "--jq", ".[] | \"\\(.headRefName)\\t\\(.state)\\t\\(.number)\""], cwd: worktree)
+                var map: [String: String] = [:]
+                for line in r.out.split(separator: "\n") {
+                    let parts = line.split(separator: "\t").map(String.init)
+                    // gh trả PR mới trước → giữ PR đầu tiên của mỗi nhánh
+                    if parts.count == 3, map[parts[0]] == nil { map[parts[0]] = parts[1] + "\t" + parts[2] }
+                }
+                prsByRepo[common] = map
+            }
+            guard let entry = prsByRepo[common]?[branch] else { continue } // nhánh không có PR → không đụng
+            let parts = entry.split(separator: "\t").map(String.init)
+            switch parts[0] {
+            case "MERGED": item.prLabel = "PR #\(parts[1]) đã merge"; item.prDone = true
+            case "CLOSED": item.prLabel = "PR #\(parts[1]) đã đóng"; item.prDone = true
+            default: item.prLabel = "PR #\(parts[1]) đang mở"
+            }
+            item.subtitle = "\(branch) · \(short(ws))"
+            result.append(item)
         }
         return result
     }

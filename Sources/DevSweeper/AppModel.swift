@@ -83,7 +83,8 @@ final class AppModel: ObservableObject {
             await autoCleanIfNeeded()
             // Kiểm tra lại mỗi giờ
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3600))
+                // Ổ sắp đầy → kiểm tra mỗi 15 phút thay vì mỗi giờ
+                try? await Task.sleep(for: .seconds(isLowDisk ? 900 : 3600))
                 await autoCleanIfNeeded()
             }
         }

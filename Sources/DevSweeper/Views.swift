@@ -608,7 +608,7 @@ struct SettingsView: View {
                     ForEach([6, 12, 24, 48, 72], id: \.self) { Text("\($0) giờ").tag($0) }
                 }
                 Stepper("Cảnh báo khi còn trống dưới \(model.lowDiskGB) GB", value: $model.lowDiskGB, in: 10...200, step: 10)
-                Text("Tự dọn: trace Instruments, DerivedData tạm trong /tmp và $TMPDIR, scratchpad của phiên Claude có PR đã merge/đóng — chỉ khi không có tiến trình nào dùng và không ghi trong 30 phút. Khi ổ dưới ngưỡng cảnh báo thì dọn thêm cache cài app của Xcode.")
+                Text("Tự dọn khi không có tiến trình nào dùng và không ghi trong 30 phút: DerivedData của worktree có PR đã merge/đóng hoặc project đã bị xóa, DerivedData tạm trong /tmp và $TMPDIR. Trace Instruments và scratchpad của phiên Claude (PR đã merge) thì phải cũ hơn ngưỡng trên. Ổ dưới ngưỡng cảnh báo → dọn thêm cache cài app của Xcode và kiểm tra mỗi 15 phút.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             SwiftUI.Section("Khi xóa worktree") {
